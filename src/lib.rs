@@ -19,6 +19,14 @@
 
 pub mod parse;
 pub mod prompts;
+pub mod raw_item;
+
+// ── RawItem re-exports ──────────────────────────────────────────────────────────
+pub use raw_item::{
+    create_raw_item, IntakeActor, IntakeActorKind, IntakeEvent, ItemLink, NewRawItem, RawItem,
+    RawItemCreated, RawItemId, RawItemKind, RawItemPatch, RawItemRouted, RawItemStatus,
+    RawItemUpdated,
+};
 
 // ── Re-export the infrastructure layer ─────────────────────────────────────────
 //
