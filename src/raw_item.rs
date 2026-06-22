@@ -22,8 +22,8 @@
 //! assert_eq!(item.status, RawItemStatus::Raw);
 //! ```
 
+use crate::time::{self, Timestamp};
 use serde::{Deserialize, Serialize};
-use taskagent_shared::{time, Timestamp};
 use uuid::Uuid;
 
 // ── ID ────────────────────────────────────────────────────────────────────────
