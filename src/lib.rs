@@ -1,4 +1,4 @@
-//! `intake-oss` — the Intake layer skeleton.
+//! `torii` — the Intake layer skeleton.
 //!
 //! A self-contained open-core skeleton: it defines its own primitives,
 //! domain output types, and a provider-neutral [`AiProvider`] seam. It has

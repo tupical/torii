@@ -7,7 +7,7 @@
 //!
 //! ```ignore
 //! use serde::Serialize;
-//! use intake_oss::prompts::PromptRegistry;
+//! use torii::prompts::PromptRegistry;
 //!
 //! #[derive(Serialize)]
 //! struct ParseCtx<'a> { input: &'a str }
