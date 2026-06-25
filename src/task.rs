@@ -1,8 +1,8 @@
 //! Local output domain for the intake `parse` operation.
 //!
 //! The skeleton emits a provider-neutral [`TaskDraft`]; mcpbox maps it onto
-//! taskagent's `Command::CreateTask` / `NewTask` when dispatching. Keeping
-//! these types local is what lets the layer compile with zero taskagent
+//! daruma's `Command::CreateTask` / `NewTask` when dispatching. Keeping
+//! these types local is what lets the layer compile with zero daruma
 //! dependency.
 
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,7 @@ impl Status {
 }
 
 /// The structured result of the intake `parse` operation, before it becomes
-/// a taskagent task.
+/// a daruma task.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TaskDraft {
     pub title: String,
