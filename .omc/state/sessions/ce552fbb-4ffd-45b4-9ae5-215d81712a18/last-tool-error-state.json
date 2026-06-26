@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /home/av/projects; for d in intake_oss sensemaking_oss decisions_oss planning_oss actions_oss; do echo \\\"========== $d ==========\\\"; echo -n \\\"deps taskagent/oss in Cargo.toml: \\\"; grep...",
-  "error": "Exit code 1\n========== intake_oss ==========\ndeps taskagent/oss in Cargo.toml: 1\nvendor symlink: gone\ntaskagent in src code (non-doc): 0\n========== sensemaking_oss ==========\ndeps taskagent/oss in Cargo.toml: 1\nvendor symlink: gone\ntaskagent in src code (non-doc): 0\n========== decisions_oss ==========\ndeps taskagent/oss in Cargo.toml: 1\nvendor symlink: gone\ntaskagent in src code (non-doc): 0\n========== planning_oss ==========\ndeps taskagent/oss in Cargo.toml: 1\nvendor symlink: gone\ntaskagent in ...",
-  "timestamp": "2026-06-18T15:57:59.938Z",
-  "retry_count": 1
-}
