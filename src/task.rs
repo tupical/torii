@@ -1,6 +1,6 @@
 //! Local output domain for the intake `parse` operation.
 //!
-//! The skeleton emits a provider-neutral [`TaskDraft`]; mcpbox maps it onto
+//! The skeleton emits a provider-neutral [`TaskDraft`]; the host maps it onto
 //! daruma's `Command::CreateTask` / `NewTask` when dispatching. Keeping
 //! these types local is what lets the layer compile with zero daruma
 //! dependency.
