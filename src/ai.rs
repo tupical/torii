@@ -3,7 +3,7 @@
 //! The skeleton owns the *operation* (prompt rendering, tool schema, arg
 //! mapping, prompt-injection hardening) but NOT the concrete model client:
 //! callers pass any [`AiProvider`], and mcpbox supplies one backed by
-//! taskagent's Responses API client. This is the only seam the intake
+//! daruma's Responses API client. This is the only seam the intake
 //! layer exposes to the outside world.
 
 use serde_json::{json, Value};
@@ -61,7 +61,7 @@ impl std::error::Error for AiError {}
 
 /// Any model backend that can answer an [`AiRequest`].
 ///
-/// Implemented in mcpbox over taskagent's real OpenAI Responses client.
+/// Implemented in mcpbox over daruma's real OpenAI Responses client.
 /// `parse_task` is generic over this trait, so no concrete client ever
 /// leaks into the skeleton.
 #[allow(async_fn_in_trait)]

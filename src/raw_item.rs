@@ -15,7 +15,7 @@
 //! # Пример
 //!
 //! ```rust
-//! use intake_oss::raw_item::{NewRawItem, RawItemKind, RawItemStatus};
+//! use torii::raw_item::{NewRawItem, RawItemKind, RawItemStatus};
 //!
 //! let item = NewRawItem::new("user://alice", RawItemKind::Text, "купить молоко")
 //!     .build();

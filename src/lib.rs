@@ -1,15 +1,15 @@
-//! `intake-oss` — the Intake layer skeleton.
+//! `torii` — the Intake layer skeleton.
 //!
 //! A self-contained open-core skeleton: it defines its own primitives,
 //! domain output types, and a provider-neutral [`AiProvider`] seam. It has
-//! **no** dependency on taskagent and **no** dependency on sibling `*_oss`
-//! layers. mcpbox supplies the concrete AI provider and any taskagent
+//! **no** dependency on daruma and **no** dependency on sibling `*_oss`
+//! layers. mcpbox supplies the concrete AI provider and any daruma
 //! adapters when wiring the layer into its architecture — implementations
 //! live only inside mcpbox.
 //!
 //! # Contract
 //! - The intake layer never writes to storage. `parse` returns a
-//!   [`TaskDraft`]; the caller (mcpbox) dispatches it onto taskagent.
+//!   [`TaskDraft`]; the caller (mcpbox) dispatches it onto daruma.
 //! - All JSON is built with [`serde_json::json!`]; no string concatenation.
 //! - Errors propagate as [`IntakeError`].
 
