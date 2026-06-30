@@ -1,0 +1,27 @@
+# systemd --user unit for torii-server (mcpbox meisei intake tool).
+# Independent deploy unit: updating torii rebuilds/redeploys ONLY this service,
+# never the mcpbox platform or daruma.
+#
+# Install: copy the built binary to ~/.local/bin/torii-server, drop this file at
+# ~/.config/systemd/user/torii-server.service, put TORII_PLATFORM_SECRET (the
+# platform-shared key) in ~/.config/torii/torii.env, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now torii-server
+# Front it with nginx `torii.mcpbox.ru -> 127.0.0.1:$TORII_PORT` and upsert the
+# tool_registry row on the platform.
+
+[Unit]
+Description=torii-server (mcpbox meisei intake tool)
+After=network-online.target
+
+[Service]
+Environment=TORII_PORT=8090
+Environment=TORII_VERSION=0.1.0
+# TORII_PLATFORM_SECRET (and any future keys) live here, NOT in this unit:
+EnvironmentFile=-%h/.config/torii/torii.env
+ExecStart=%h/.local/bin/torii-server
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
