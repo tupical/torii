@@ -47,7 +47,14 @@ pub async fn parse_task<P: AiProvider>(
     let title = args["title"]
         .as_str()
         .ok_or_else(|| IntakeError::validation("create_task: missing required field 'title'"))?
+        .trim()
         .to_owned();
+
+    if title.is_empty() {
+        return Err(IntakeError::validation(
+            "create_task: field 'title' must not be blank",
+        ));
+    }
 
     let mut draft = TaskDraft::new(title);
 
@@ -130,6 +137,24 @@ mod tests {
         };
         let err = parse_task(&fake, "x").await.unwrap_err();
         assert!(matches!(err, IntakeError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn parse_task_whitespace_title_is_validation_error() {
+        let fake = FakeProvider {
+            args: r#"{"title":"   "}"#.into(),
+        };
+        let err = parse_task(&fake, "x").await.unwrap_err();
+        assert!(matches!(err, IntakeError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn parse_task_trims_title() {
+        let fake = FakeProvider {
+            args: r#"{"title":"  Buy milk  "}"#.into(),
+        };
+        let draft = parse_task(&fake, "x").await.unwrap();
+        assert_eq!(draft.title, "Buy milk");
     }
 
     #[test]
