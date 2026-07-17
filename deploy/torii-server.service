@@ -17,6 +17,8 @@ After=network-online.target
 Environment=TORII_PORT=8090
 Environment=TORII_VERSION=0.1.0
 # TORII_PLATFORM_SECRET (and any future keys) live here, NOT in this unit:
+# OPENAI_API_KEY[/OPENAI_BASE_URL/OPENAI_MODEL] also goes there — without it
+# the AI method `torii.parse` answers ai_not_configured (503).
 EnvironmentFile=-%h/.config/torii/torii.env
 ExecStart=%h/.local/bin/torii-server
 Restart=always
