@@ -24,39 +24,12 @@
 
 use crate::time::{self, Timestamp};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 // ── ID ────────────────────────────────────────────────────────────────────────
 
-/// Strongly-typed UUIDv7 identifier for a [`RawItem`].
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct RawItemId(pub Uuid);
-
-impl RawItemId {
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl Default for RawItemId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for RawItemId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ri_{}", self.0)
-    }
-}
-
-impl std::str::FromStr for RawItemId {
-    type Err = uuid::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let trimmed = s.strip_prefix("ri_").unwrap_or(s);
-        Ok(Self(Uuid::parse_str(trimmed)?))
-    }
+layer_kit::newtype_id! {
+    /// Strongly-typed UUIDv7 identifier for a [`RawItem`].
+    pub struct RawItemId("ri");
 }
 
 // ── Тип входящего сырья ───────────────────────────────────────────────────────
