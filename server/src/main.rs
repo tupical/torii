@@ -40,6 +40,42 @@ impl McpHandler for Handler {
     ) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
         dispatch(self.ai.as_ref(), method, params).await
     }
+
+    fn tools(&self) -> Vec<serde_json::Value> {
+        tools()
+    }
+}
+
+/// Tool descriptors for `tools/list` — one per method actually handled by
+/// [`dispatch`] (`torii.list_raw` is NOT_IMPLEMENTED, so it is omitted).
+fn tools() -> Vec<serde_json::Value> {
+    vec![
+        json!({
+            "name": "torii_ingest_raw",
+            "description": "Build a typed RawItem from raw intake (source, kind, body, optional link).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string"},
+                    "kind": {"type": "string"},
+                    "body": {"type": "string"},
+                    "link": {"type": "string"}
+                },
+                "required": ["source", "kind", "body"]
+            }
+        }),
+        json!({
+            "name": "torii_parse",
+            "description": "NL→TaskDraft AI operation: parse free-form text into a task draft.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string"}
+                },
+                "required": ["input"]
+            }
+        }),
+    ]
 }
 
 #[tokio::main]
@@ -265,6 +301,21 @@ mod tests {
             .unwrap_err();
         assert_eq!(code, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"], "invalid_params");
+    }
+
+    #[tokio::test]
+    async fn tools_list_names_are_all_dispatchable() {
+        for tool in tools() {
+            let name = tool["name"].as_str().unwrap();
+            let method = name.replacen('_', ".", 1);
+            let (_, body) = dispatch(None::<&OpenAiProvider>, &method, json!({}))
+                .await
+                .expect_err("empty params must not satisfy any real method");
+            assert_ne!(
+                body["error"], "unknown_method",
+                "{method} must be a real dispatch method"
+            );
+        }
     }
 
     #[tokio::test]
