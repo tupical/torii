@@ -16,10 +16,13 @@ After=network-online.target
 [Service]
 Environment=TORII_PORT=8090
 Environment=TORII_VERSION=0.1.0
+# Persistent object/event store; create %h/.local/share/torii before first start.
+Environment=TORII_DB=%h/.local/share/torii/torii.db
 # TORII_PLATFORM_SECRET (and any future keys) live here, NOT in this unit:
 # OPENAI_API_KEY[/OPENAI_BASE_URL/OPENAI_MODEL] also goes there — without it
 # the AI method `torii.parse` answers ai_not_configured (503).
 EnvironmentFile=-%h/.config/torii/torii.env
+ExecStartPre=/usr/bin/mkdir -p %h/.local/share/torii
 ExecStart=%h/.local/bin/torii-server
 Restart=always
 RestartSec=3
