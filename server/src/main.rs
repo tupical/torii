@@ -59,7 +59,7 @@ fn tools() -> Vec<serde_json::Value> {
                 "type": "object",
                 "properties": {
                     "source": {"type": "string"},
-                    "kind": {"type": "string"},
+                    "kind": {"type": "string", "description": "Media type: text, document, reference, binary, or event. Semantic/free-form values are treated as text."},
                     "body": {"type": "string"},
                     "link": {"type": "string"}
                 },

@@ -36,7 +36,7 @@ layer_kit::newtype_id! {
 
 /// Тип входящего материала. Intake не знает предметных деталей — только
 /// структурную форму поступающего сырья.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RawItemKind {
     /// Свободный текст (идея, заметка, диалог).
@@ -49,6 +49,19 @@ pub enum RawItemKind {
     Binary,
     /// Событие из внешней системы (webhook-payload и т.п.).
     Event,
+}
+
+// keep arms in sync with RawItemKind variants
+impl<'de> Deserialize<'de> for RawItemKind {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match String::deserialize(deserializer)?.as_str() {
+            "document" => Self::Document,
+            "reference" => Self::Reference,
+            "binary" => Self::Binary,
+            "event" => Self::Event,
+            _ => Self::Text,
+        })
+    }
 }
 
 impl RawItemKind {
@@ -355,6 +368,46 @@ mod tests {
             serde_json::to_string(&RawItemStatus::Linked).unwrap(),
             "\"linked\""
         );
+    }
+
+    #[test]
+    fn raw_item_kind_maps_semantic_kinds_to_text() {
+        for kind in ["idea", "security_plan", "implementation_plan"] {
+            assert_eq!(
+                serde_json::from_str::<RawItemKind>(&format!("\"{kind}\"")).unwrap(),
+                RawItemKind::Text
+            );
+        }
+    }
+
+    #[test]
+    fn raw_item_kind_preserves_media_kinds() {
+        for (kind, expected) in [
+            ("text", RawItemKind::Text),
+            ("document", RawItemKind::Document),
+            ("reference", RawItemKind::Reference),
+            ("binary", RawItemKind::Binary),
+            ("event", RawItemKind::Event),
+        ] {
+            assert_eq!(
+                serde_json::from_str::<RawItemKind>(&format!("\"{kind}\"")).unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn raw_item_kind_roundtrips_all_variants() {
+        for kind in [
+            RawItemKind::Text,
+            RawItemKind::Document,
+            RawItemKind::Reference,
+            RawItemKind::Binary,
+            RawItemKind::Event,
+        ] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(serde_json::from_str::<RawItemKind>(&json).unwrap(), kind);
+        }
     }
 
     #[test]
