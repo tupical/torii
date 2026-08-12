@@ -174,6 +174,8 @@ fn ai_error(e: torii::IntakeError) -> (StatusCode, serde_json::Value) {
     }
 }
 
+const METHODS: &[&str] = &["torii.ingest_raw", "torii.list_raw", "torii.parse"];
+
 /// Pure MCP dispatch over the torii intake lib — no auth, no HTTP, so it is
 /// unit-testable directly (AI methods get a fake `AiProvider` in tests).
 /// `Ok` is the method result object; `Err` is an (HTTP status, error body)
@@ -184,6 +186,12 @@ async fn dispatch<P: torii::AiProvider>(
     method: &str,
     params: serde_json::Value,
 ) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
+    if !METHODS.contains(&method) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"error": "unknown_method", "detail": method}),
+        ));
+    }
     match method {
         "torii.ingest_raw" => {
             let p: IngestParams = serde_json::from_value(params).map_err(|e| {
@@ -425,6 +433,11 @@ mod tests {
                 assert_ne!(body["error"], "unknown_method", "{method} must be real");
             }
         }
+    }
+
+    #[test]
+    fn tools_catalogue_matches_methods() {
+        layer_kit::test_support::assert_catalogue_matches(&tools(), METHODS);
     }
 
     #[tokio::test]
