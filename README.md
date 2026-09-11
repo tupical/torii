@@ -1,10 +1,20 @@
+---
+title: "Torii intake server"
+audience: "developer"
+intent: "reference"
+owner: "MeiSei"
+status: "active"
+source_of_truth: "README.md"
+last_verified: "2026-09-11"
+---
+
 # Torii 鳥居 — intake layer of Meisei
 
 > **Meisei** 明晰 (“clarity”) is an open pipeline that carries raw intent through
 > understanding → decision → plan → action to a finished result.
 
 [![Meisei](https://img.shields.io/badge/meisei-明晰-1f2937.svg)](https://meisei.ru)
-[![License: Apache-2.0 WITH Commons-Clause](https://img.shields.io/badge/license-Apache--2.0%20WITH%20Commons--Clause-blue.svg)](LICENSE)
+[![License: Apache-2.0 WITH Commons-Clause](https://img.shields.io/badge/license-Apache--2.0%20WITH%20Commons--Clause-blue.svg)](https://github.com/tupical/torii/blob/main/LICENSE)
 
 <sub>
 <b>torii</b> · satori · enma · yatagarasu · fujin · daruma
@@ -13,20 +23,26 @@
 
 ## What it is
 
-Torii is the **intake** layer of the Meisei pipeline: the single entry point where
-raw material enters as a typed [`RawItem`]. Its AI operation (`parse`) turns natural
-language input into a structured `TaskDraft` through a provider-neutral
-`AiProvider` seam. The intake layer **never writes to storage** — the parse result
-is returned to the caller (the host), which dispatches it onto the execution layer
-(daruma). The crate has no dependency on daruma or sibling layers; adapters live
-only inside the host.
+Torii is the **intake** layer of the Meisei pipeline. The library constructs
+`RawItem` snapshots; `torii.ingest_raw` persists them in the server's SQLite
+object store and `torii.list_raw` reads them. New items stay `raw`: there is no
+edit, review, routing, or intake-event journal API. Historical status values
+remain readable. `source` is caller-supplied context, not authenticated actor
+evidence; the layer token carries workspace/project, not a user/agent identity.
+
+The standalone `torii.parse` MCP method turns natural language into `TaskDraft`
+using an optional AI provider. It is advertised and dispatched by this server,
+with fake-provider tests covering success and errors. MCPBox's production
+maturity route uses `torii.ingest_raw`, not `torii.parse`; parsing neither
+creates a Daruma task nor replaces the maturity/handoff gate. The library has
+no dependency on Daruma or sibling layers and performs no storage I/O itself.
 
 ## Repository layout
 
 - `src/` — the `torii` library: RawItem primitives, `parse_task`, prompt registry,
   error types.
 - `server/` — `torii-server`, a thin, independently-deployed HTTP/MCP wrapper over
-  the library (the axum/tokio scaffold comes from [`layer-kit`](../layer-kit)).
+  the library (the axum/tokio scaffold comes from `layer-kit`).
 - `deploy/` — release `build.sh` (stamps the git SHA into `/healthz`) and a
   systemd user unit.
 
@@ -60,5 +76,5 @@ Pipeline canon and layer contracts: https://meisei.ru/docs
 
 ## License
 
-Apache-2.0 WITH Commons-Clause — see [LICENSE](LICENSE) and
-[LICENSE.commons-clause.md](LICENSE.commons-clause.md).
+Apache-2.0 WITH Commons-Clause — see [LICENSE](https://github.com/tupical/torii/blob/main/LICENSE) and
+[LICENSE.commons-clause.md](https://github.com/tupical/torii/blob/main/LICENSE.commons-clause.md).

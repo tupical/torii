@@ -4,13 +4,12 @@
 //! цифровых продуктов. Intake только принимает сырьё, обогащает его
 //! минимальным контекстом и передаёт в Sensemaking.
 //!
-//! # Жизненный цикл
+//! # Достижимый контракт
 //!
-//! ```text
-//! raw  ──→  needs_review  ──→  linked
-//!  └──────────────────────────────↑
-//!         (прямая маршрутизация)
-//! ```
+//! MCP принимает и перечисляет сохранённые снимки. Новый элемент всегда `raw`;
+//! методов изменения, модерации и маршрутизации в сервере нет. Исторические
+//! статусы читаются для совместимости, но не означают работающий lifecycle.
+//! Библиотека не публикует события: журнал приёма здесь не реализован.
 //!
 //! # Пример
 //!
@@ -78,7 +77,8 @@ impl RawItemKind {
 
 // ── Статус ────────────────────────────────────────────────────────────────────
 
-/// Статус обработки [`RawItem`] в слое Intake.
+/// Сериализованный статус [`RawItem`]. Сервер создаёт только `Raw`;
+/// остальные варианты сохранены для чтения исторических payload.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RawItemStatus {
@@ -98,11 +98,6 @@ impl RawItemStatus {
             RawItemStatus::NeedsReview => "needs_review",
             RawItemStatus::Linked => "linked",
         }
-    }
-
-    /// `true` если элемент уже привязан (терминальный для Intake).
-    pub fn is_linked(self) -> bool {
-        matches!(self, RawItemStatus::Linked)
     }
 }
 
@@ -155,32 +150,6 @@ pub struct RawItem {
     pub updated_at: Timestamp,
 }
 
-impl RawItem {
-    /// Установить статус `needs_review`. Нет эффекта если уже `linked`.
-    pub fn flag_needs_review(&mut self) {
-        if !self.status.is_linked() {
-            self.status = RawItemStatus::NeedsReview;
-            self.updated_at = time::now();
-        }
-    }
-
-    /// Привязать к цели/контексту и перевести в `linked`.
-    ///
-    /// Возвращает [`IntakeEvent::RawItemRouted`] для публикации.
-    pub fn route_to(&mut self, destination: impl Into<String>) -> IntakeEvent {
-        let dest = destination.into();
-        self.link = Some(ItemLink::new(&dest));
-        self.status = RawItemStatus::Linked;
-        self.updated_at = time::now();
-        IntakeEvent::RawItemRouted(RawItemRouted {
-            item_id: self.id,
-            destination: dest,
-            occurred_at: self.updated_at,
-            actor: None,
-        })
-    }
-}
-
 // ── Входные данные для создания ───────────────────────────────────────────────
 
 /// Входные данные для создания нового [`RawItem`].
@@ -193,11 +162,7 @@ pub struct NewRawItem {
 }
 
 impl NewRawItem {
-    pub fn new(
-        source: impl Into<String>,
-        kind: RawItemKind,
-        body: impl Into<String>,
-    ) -> Self {
+    pub fn new(source: impl Into<String>, kind: RawItemKind, body: impl Into<String>) -> Self {
         Self {
             id: None,
             source: source.into(),
@@ -227,113 +192,6 @@ impl NewRawItem {
             updated_at: now,
         }
     }
-}
-
-// ── Sparse update ─────────────────────────────────────────────────────────────
-
-/// Разреженное обновление [`RawItem`]. `None` = не менять.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RawItemPatch {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub link: Option<Option<ItemLink>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<RawItemStatus>,
-}
-
-impl RawItemPatch {
-    pub fn is_empty(&self) -> bool {
-        self.body.is_none() && self.link.is_none() && self.status.is_none()
-    }
-
-    /// Применить патч к элементу. Возвращает событие обновления.
-    pub fn apply(self, item: &mut RawItem) -> Option<IntakeEvent> {
-        if self.is_empty() {
-            return None;
-        }
-        if let Some(b) = self.body {
-            item.body = b;
-        }
-        if let Some(l) = self.link {
-            item.link = l;
-        }
-        if let Some(s) = self.status {
-            item.status = s;
-        }
-        item.updated_at = time::now();
-        Some(IntakeEvent::RawItemUpdated(RawItemUpdated {
-            item_id: item.id,
-            occurred_at: item.updated_at,
-            actor: None,
-        }))
-    }
-}
-
-// ── События жизненного цикла ──────────────────────────────────────────────────
-
-/// Опциональный источник действия (агент или пользователь).
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct IntakeActor {
-    pub kind: IntakeActorKind,
-    /// Непрозрачный строковый идентификатор (user-id, agent-id и т.п.).
-    pub id: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum IntakeActorKind {
-    User,
-    Agent,
-}
-
-/// Событие создания [`RawItem`].
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RawItemCreated {
-    pub item_id: RawItemId,
-    pub occurred_at: Timestamp,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub actor: Option<IntakeActor>,
-}
-
-/// Событие обновления [`RawItem`] (body / link / status изменились).
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RawItemUpdated {
-    pub item_id: RawItemId,
-    pub occurred_at: Timestamp,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub actor: Option<IntakeActor>,
-}
-
-/// Событие маршрутизации [`RawItem`] в следующий слой (Sensemaking и т.п.).
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RawItemRouted {
-    pub item_id: RawItemId,
-    /// URI назначения (например `sensemaking://default`).
-    pub destination: String,
-    pub occurred_at: Timestamp,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub actor: Option<IntakeActor>,
-}
-
-/// Событие жизненного цикла [`RawItem`].
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum IntakeEvent {
-    RawItemCreated(RawItemCreated),
-    RawItemUpdated(RawItemUpdated),
-    RawItemRouted(RawItemRouted),
-}
-
-/// Создать элемент и вернуть пару (item, created-event).
-pub fn create_raw_item(input: NewRawItem, actor: Option<IntakeActor>) -> (RawItem, IntakeEvent) {
-    let item = input.build();
-    let event = IntakeEvent::RawItemCreated(RawItemCreated {
-        item_id: item.id,
-        occurred_at: item.created_at,
-        actor,
-    });
-    (item, event)
 }
 
 // ── Тесты ─────────────────────────────────────────────────────────────────────
@@ -420,72 +278,6 @@ mod tests {
     }
 
     #[test]
-    fn flag_needs_review_changes_status() {
-        let mut item =
-            NewRawItem::new("user://bob", RawItemKind::Text, "что-то непонятное").build();
-        assert_eq!(item.status, RawItemStatus::Raw);
-        item.flag_needs_review();
-        assert_eq!(item.status, RawItemStatus::NeedsReview);
-    }
-
-    #[test]
-    fn flag_needs_review_noop_on_linked() {
-        let mut item = NewRawItem::new("user://bob", RawItemKind::Text, "уже привязано").build();
-        item.status = RawItemStatus::Linked;
-        item.flag_needs_review();
-        // остаётся linked, не деградирует
-        assert_eq!(item.status, RawItemStatus::Linked);
-    }
-
-    #[test]
-    fn route_to_sets_linked_and_returns_event() {
-        let mut item = NewRawItem::new("webhook://gh", RawItemKind::Event, "{}").build();
-        let event = item.route_to("sensemaking://default");
-        assert_eq!(item.status, RawItemStatus::Linked);
-        assert_eq!(
-            item.link.as_ref().map(|l| l.target.as_str()),
-            Some("sensemaking://default")
-        );
-        match event {
-            IntakeEvent::RawItemRouted(r) => {
-                assert_eq!(r.item_id, item.id);
-                assert_eq!(r.destination, "sensemaking://default");
-            }
-            other => panic!("ожидалось RawItemRouted, получено: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn create_raw_item_emits_created_event() {
-        let input = NewRawItem::new("api://v1", RawItemKind::Document, r#"{"key":"val"}"#);
-        let (item, event) = create_raw_item(input, None);
-        match event {
-            IntakeEvent::RawItemCreated(c) => assert_eq!(c.item_id, item.id),
-            other => panic!("ожидалось RawItemCreated, получено: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn raw_item_patch_apply_emits_updated_event() {
-        let mut item = NewRawItem::new("user://x", RawItemKind::Text, "старый текст").build();
-        let patch = RawItemPatch {
-            body: Some("новый текст".to_owned()),
-            ..Default::default()
-        };
-        let event = patch.apply(&mut item);
-        assert_eq!(item.body, "новый текст");
-        assert!(matches!(event, Some(IntakeEvent::RawItemUpdated(_))));
-    }
-
-    #[test]
-    fn raw_item_patch_empty_returns_none() {
-        let mut item = NewRawItem::new("user://x", RawItemKind::Text, "текст").build();
-        let patch = RawItemPatch::default();
-        let event = patch.apply(&mut item);
-        assert!(event.is_none());
-    }
-
-    #[test]
     fn raw_item_id_display_has_prefix() {
         let id = RawItemId::new();
         assert!(id.to_string().starts_with("ri_"), "got: {id}");
@@ -499,25 +291,14 @@ mod tests {
     }
 
     #[test]
-    fn intake_event_serde_tagged() {
-        let event = IntakeEvent::RawItemRouted(RawItemRouted {
-            item_id: RawItemId::new(),
-            destination: "sensemaking://default".to_owned(),
-            occurred_at: time::now(),
-            actor: None,
-        });
-        let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("\"type\":\"raw_item_routed\""), "got: {json}");
-        // round-trip
-        let decoded: IntakeEvent = serde_json::from_str(&json).unwrap();
-        assert_eq!(event, decoded);
-    }
-
-    #[test]
     fn raw_item_with_link_builder() {
-        let item = NewRawItem::new("user://carol", RawItemKind::Reference, "https://example.com")
-            .with_link("goal://g_01")
-            .build();
+        let item = NewRawItem::new(
+            "user://carol",
+            RawItemKind::Reference,
+            "https://example.com",
+        )
+        .with_link("goal://g_01")
+        .build();
         assert_eq!(item.link.as_ref().unwrap().target, "goal://g_01");
         assert_eq!(item.status, RawItemStatus::Raw);
     }

@@ -8,8 +8,10 @@
 //! live only inside the host.
 //!
 //! # Contract
-//! - The intake layer never writes to storage. `parse` returns a
-//!   [`TaskDraft`]; the caller (the host) dispatches it onto daruma.
+//! - The library performs no storage I/O. The server persists raw snapshots.
+//! - `parse` returns a [`TaskDraft`] through the standalone MCP method;
+//!   it does not create a Daruma task or advance the maturity pipeline.
+//! - Raw snapshots have no update/routing API or event journal.
 //! - All JSON is built with [`serde_json::json!`]; no string concatenation.
 //! - Errors propagate as [`IntakeError`].
 
@@ -32,8 +34,4 @@ pub use task::{Priority, Status, TaskDraft};
 pub use time::Timestamp;
 
 // ── RawItem re-exports ──────────────────────────────────────────────────────────
-pub use raw_item::{
-    create_raw_item, IntakeActor, IntakeActorKind, IntakeEvent, ItemLink, NewRawItem, RawItem,
-    RawItemCreated, RawItemId, RawItemKind, RawItemPatch, RawItemRouted, RawItemStatus,
-    RawItemUpdated,
-};
+pub use raw_item::{ItemLink, NewRawItem, RawItem, RawItemId, RawItemKind, RawItemStatus};
