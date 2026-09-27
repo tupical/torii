@@ -36,11 +36,15 @@ struct Handler {
 impl McpHandler for Handler {
     async fn dispatch(
         &self,
-        _claims: &Claims,
+        claims: &Claims,
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, (StatusCode, serde_json::Value)> {
-        dispatch(&self.store, self.ai.as_ref(), method, params).await
+        // One store serves every tenant: confine this call to the token's scope.
+        let store = &self
+            .store
+            .scoped(&claims.workspace, claims.project.as_deref());
+        dispatch(store, self.ai.as_ref(), method, params).await
     }
 
     fn tools(&self) -> Vec<serde_json::Value> {
@@ -453,5 +457,39 @@ mod tests {
             .unwrap_err();
         assert_eq!(code, StatusCode::BAD_GATEWAY);
         assert_eq!(body["error"], "ai_upstream");
+    }
+
+    /// daruma 01a0d3bc: one layer server serves every tenant — the platform
+    /// token's workspace confines every read, so ws B never sees ws A's objects.
+    #[tokio::test]
+    async fn token_of_one_workspace_never_sees_another() {
+        let claims = |ws: &str| Claims {
+            workspace: ws.into(),
+            project: None,
+            tool: TOOL.into(),
+            exp: i64::MAX,
+        };
+        let handler = Handler {
+            ai: None,
+            store: test_store().await,
+        };
+        handler
+            .dispatch(
+                &claims("ws_a"),
+                "torii.ingest_raw",
+                json!({"source": "user://a", "kind": "text", "body": "secret of A"}),
+            )
+            .await
+            .unwrap();
+        let b = handler
+            .dispatch(&claims("ws_b"), "torii.list_raw", json!({}))
+            .await
+            .unwrap();
+        assert_eq!(b["raw_items"], json!([]));
+        let a = handler
+            .dispatch(&claims("ws_a"), "torii.list_raw", json!({}))
+            .await
+            .unwrap();
+        assert_eq!(a["raw_items"][0]["body"], "secret of A");
     }
 }
