@@ -1,37 +1,35 @@
 //! `torii` — the Intake layer skeleton.
 //!
-//! A self-contained open-core skeleton: it defines its own primitives,
-//! domain output types, and a provider-neutral [`AiProvider`] seam. It has
-//! **no** dependency on daruma and **no** dependency on sibling `*_oss`
-//! layers. the host supplies the concrete AI provider and any daruma
-//! adapters when wiring the layer into its architecture — implementations
-//! live only inside the host.
+//! A self-contained open-core skeleton: it defines its own primitives and a
+//! provider-neutral [`AiProvider`] seam. It has **no** dependency on daruma
+//! and **no** dependency on sibling `*_oss` layers. the host supplies the
+//! concrete AI provider and any daruma adapters when wiring the layer into
+//! its architecture — implementations live only inside the host.
 //!
 //! # Contract
 //! - The library performs no storage I/O. The server persists raw snapshots.
-//! - `parse` returns a [`TaskDraft`] through the standalone MCP method;
-//!   it does not create a Daruma task or advance the maturity pipeline.
-//! - Raw snapshots have no update/routing API or event journal.
+//! - The only output of Intake is a [`RawItem`] handed to Sensemaking. Raw
+//!   material never becomes a task here: there is no task type and no
+//!   "dispatch onto daruma" path (ADR-0014; tasks are materialized only by a
+//!   plan, ADR-0007).
+//! - [`RawItemStatus::Suppressed`] is the terminal "screened out" state;
+//!   [`RawItem::suppress`] sets it and returns an event carrying the reason.
+//!   Who decides what is noise is the caller's business, not the layer's.
 //! - All JSON is built with [`serde_json::json!`]; no string concatenation.
 //! - Errors propagate as [`IntakeError`].
 
 pub mod ai;
 pub mod error;
-pub mod parse;
-pub mod prompts;
 pub mod raw_item;
-pub mod task;
 pub mod time;
 
-// ── Seam + operation re-exports ─────────────────────────────────────────────────
-pub use ai::{
-    create_task_tool, wrap_untrusted, AiError, AiOutput, AiProvider, AiRequest, AiUsage, ToolCall,
-};
+// ── Seam re-exports ─────────────────────────────────────────────────────────────
+pub use ai::{wrap_untrusted, AiError, AiOutput, AiProvider, AiRequest, AiUsage, ToolCall};
 pub use error::IntakeError;
-pub use parse::parse_task;
-pub use prompts::PromptRegistry;
-pub use task::{Priority, Status, TaskDraft};
 pub use time::Timestamp;
 
 // ── RawItem re-exports ──────────────────────────────────────────────────────────
-pub use raw_item::{ItemLink, NewRawItem, RawItem, RawItemId, RawItemKind, RawItemStatus};
+pub use raw_item::{
+    IntakeEvent, ItemLink, NewRawItem, RawItem, RawItemId, RawItemKind, RawItemStatus,
+    RawItemSuppressed,
+};
