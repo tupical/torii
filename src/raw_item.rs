@@ -9,7 +9,24 @@
 //! MCP принимает и перечисляет сохранённые снимки. Новый элемент всегда `raw`;
 //! методов изменения, модерации и маршрутизации в сервере нет. Исторические
 //! статусы читаются для совместимости, но не означают работающий lifecycle.
-//! Библиотека не публикует события: журнал приёма здесь не реализован.
+//!
+//! Терминальных статусов два, и они взаимоисключающи: `linked` (передано
+//! дальше) и `suppressed` (отсеяно, ADR-0014):
+//!
+//! ```text
+//! raw ──▶ needs_review ──▶ linked
+//!   └──────────┴─────────▶ suppressed   (RawItem::suppress, с причиной)
+//! ```
+//!
+//! Отсев выставляет вызывающая сторона (человек, агент, хост) — ядро не
+//! решает, что является шумом, и не содержит порогов или скоринга.
+//! [`RawItem::suppress`] возвращает событие-след [`RawItemSuppressed`] с
+//! обязательной причиной: причина живёт в событии, а не в `RawItem`, и
+//! персистирует его хост. Отсеянный элемент маршрутизировать нельзя —
+//! [`RawItem::ensure_routable`] отвечает ошибкой. Повторное открытие — явная
+//! запись статуса (`item.status = RawItemStatus::Raw`), отдельного API нет.
+//! Журнала приёма в библиотеке нет; актор не аутентифицирован и в событие не
+//! пишется.
 //!
 //! # Пример
 //!
@@ -21,6 +38,7 @@
 //! assert_eq!(item.status, RawItemStatus::Raw);
 //! ```
 
+use crate::error::IntakeError;
 use crate::time::{self, Timestamp};
 use serde::{Deserialize, Serialize};
 
@@ -93,7 +111,8 @@ impl RawItemKind {
 // ── Статус ────────────────────────────────────────────────────────────────────
 
 /// Сериализованный статус [`RawItem`]. Сервер создаёт только `Raw`;
-/// остальные варианты сохранены для чтения исторических payload.
+/// `NeedsReview`/`Linked` сохранены для чтения исторических payload,
+/// `Suppressed` выставляет хост через [`RawItem::suppress`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RawItemStatus {
@@ -104,6 +123,9 @@ pub enum RawItemStatus {
     NeedsReview,
     /// Привязано к цели/контексту и передано в Sensemaking.
     Linked,
+    /// Отсеяно до Sensemaking (шум, дубль, бот …); терминально, причина — в
+    /// событии [`RawItemSuppressed`].
+    Suppressed,
 }
 
 impl RawItemStatus {
@@ -112,7 +134,13 @@ impl RawItemStatus {
             RawItemStatus::Raw => "raw",
             RawItemStatus::NeedsReview => "needs_review",
             RawItemStatus::Linked => "linked",
+            RawItemStatus::Suppressed => "suppressed",
         }
+    }
+
+    /// `true` для конечных статусов: `Linked` и `Suppressed`.
+    pub fn is_terminal(self) -> bool {
+        matches!(self, RawItemStatus::Linked | RawItemStatus::Suppressed)
     }
 }
 
@@ -163,6 +191,71 @@ pub struct RawItem {
     pub status: RawItemStatus,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+}
+
+impl RawItem {
+    /// Отсеять элемент: статус `Suppressed`, `updated_at` = сейчас, событие-след
+    /// с причиной.
+    ///
+    /// Тихого отсева нет: пустая причина — `IntakeError::Validation`. Элемент в
+    /// терминальном статусе (`Linked` уже передан дальше, `Suppressed` уже
+    /// отсеян) не меняется и тоже даёт `Validation`.
+    pub fn suppress(&mut self, reason: impl Into<String>) -> Result<IntakeEvent, IntakeError> {
+        let reason = reason.into();
+        if reason.trim().is_empty() {
+            return Err(IntakeError::validation(
+                "suppress requires a non-empty reason",
+            ));
+        }
+        if self.status.is_terminal() {
+            return Err(IntakeError::validation(format!(
+                "raw item {} is already {}; only a non-terminal item can be suppressed",
+                self.id,
+                self.status.as_str()
+            )));
+        }
+        let now = time::now();
+        self.status = RawItemStatus::Suppressed;
+        self.updated_at = now;
+        Ok(IntakeEvent::RawItemSuppressed(RawItemSuppressed {
+            item_id: self.id,
+            reason,
+            occurred_at: now,
+        }))
+    }
+
+    /// Проверка перед передачей в Sensemaking: отсеянный элемент
+    /// маршрутизировать нельзя (`IntakeError::Validation`), остальные статусы
+    /// проходят.
+    pub fn ensure_routable(&self) -> Result<(), IntakeError> {
+        if self.status == RawItemStatus::Suppressed {
+            return Err(IntakeError::validation(format!(
+                "raw item {} is suppressed and cannot be routed; reopen it first",
+                self.id
+            )));
+        }
+        Ok(())
+    }
+}
+
+// ── События ───────────────────────────────────────────────────────────────────
+
+/// Событие-след отсева [`RawItem`]. Хост персистирует его так же, как
+/// персистирует сам элемент.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RawItemSuppressed {
+    pub item_id: RawItemId,
+    /// Почему элемент отсеян. Свободный текст, всегда непустой.
+    pub reason: String,
+    pub occurred_at: Timestamp,
+}
+
+/// Событие слоя Intake. Wire-форма — tagged по `type`
+/// (`"raw_item_suppressed"`).
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum IntakeEvent {
+    RawItemSuppressed(RawItemSuppressed),
 }
 
 // ── Входные данные для создания ───────────────────────────────────────────────
@@ -221,6 +314,7 @@ mod tests {
             (RawItemStatus::Raw, "raw"),
             (RawItemStatus::NeedsReview, "needs_review"),
             (RawItemStatus::Linked, "linked"),
+            (RawItemStatus::Suppressed, "suppressed"),
         ];
         for (status, expected) in pairs {
             assert_eq!(status.as_str(), expected);
@@ -330,5 +424,97 @@ mod tests {
         .build();
         assert_eq!(item.link.as_ref().unwrap().target, "goal://g_01");
         assert_eq!(item.status, RawItemStatus::Raw);
+    }
+    fn item() -> RawItem {
+        NewRawItem::new("webhook://gh", RawItemKind::Event, "{}").build()
+    }
+
+    #[test]
+    fn terminal_statuses_are_linked_and_suppressed() {
+        assert!(!RawItemStatus::Raw.is_terminal());
+        assert!(!RawItemStatus::NeedsReview.is_terminal());
+        assert!(RawItemStatus::Linked.is_terminal());
+        assert!(RawItemStatus::Suppressed.is_terminal());
+    }
+
+    #[test]
+    fn suppress_sets_status_and_returns_event_with_reason() {
+        for from in [RawItemStatus::Raw, RawItemStatus::NeedsReview] {
+            let mut item = item();
+            item.status = from;
+            let before = item.updated_at;
+            let event = item.suppress("bot noise").unwrap();
+            assert_eq!(item.status, RawItemStatus::Suppressed);
+            assert!(item.updated_at >= before);
+            let IntakeEvent::RawItemSuppressed(e) = event;
+            assert_eq!(e.item_id, item.id);
+            assert_eq!(e.reason, "bot noise");
+            assert_eq!(e.occurred_at, item.updated_at);
+        }
+    }
+
+    #[test]
+    fn suppress_requires_reason() {
+        let mut item = item();
+        for reason in ["", "   "] {
+            assert!(matches!(
+                item.suppress(reason),
+                Err(IntakeError::Validation(_))
+            ));
+        }
+        assert_eq!(item.status, RawItemStatus::Raw);
+    }
+
+    #[test]
+    fn suppress_refuses_terminal_items() {
+        for from in [RawItemStatus::Linked, RawItemStatus::Suppressed] {
+            let mut item = item();
+            item.status = from;
+            let at = item.updated_at;
+            assert!(matches!(
+                item.suppress("dup"),
+                Err(IntakeError::Validation(_))
+            ));
+            assert_eq!(item.status, from, "terminal status must not change");
+            assert_eq!(item.updated_at, at);
+        }
+    }
+
+    #[test]
+    fn suppressed_item_is_not_routable_until_reopened() {
+        let mut item = item();
+        assert!(item.ensure_routable().is_ok());
+        item.suppress("noise").unwrap();
+        assert!(matches!(
+            item.ensure_routable(),
+            Err(IntakeError::Validation(_))
+        ));
+        // Повторное открытие — явная запись статуса.
+        item.status = RawItemStatus::Raw;
+        assert!(item.ensure_routable().is_ok());
+        assert!(item.suppress("noise again").is_ok());
+    }
+
+    #[test]
+    fn suppressed_status_and_event_serde_roundtrip() {
+        assert_eq!(
+            serde_json::to_string(&RawItemStatus::Suppressed).unwrap(),
+            "\"suppressed\""
+        );
+        assert_eq!(
+            serde_json::from_str::<RawItemStatus>("\"suppressed\"").unwrap(),
+            RawItemStatus::Suppressed
+        );
+        let mut item = item();
+        let event = item.suppress("duplicate of ri_x").unwrap();
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "raw_item_suppressed");
+        assert_eq!(json["item_id"], serde_json::to_value(item.id).unwrap());
+        assert_eq!(json["reason"], "duplicate of ri_x");
+        assert_eq!(serde_json::from_value::<IntakeEvent>(json).unwrap(), event);
+
+        let item_json = serde_json::to_value(&item).unwrap();
+        assert_eq!(item_json["status"], "suppressed");
+        assert_eq!(serde_json::from_value::<RawItem>(item_json).unwrap(), item);
     }
 }
